@@ -1,0 +1,359 @@
+<?php
+// Fetching the product IDs
+$productIds = $block->getProductIds();
+$productsCollection = $block->getProductsByIds();
+
+// Using Object Manager to get the category collection
+$objectManager = \Magento\Framework\App\ObjectManager::getInstance();
+$categoryFactory = $objectManager->get(\Magento\Catalog\Model\CategoryFactory::class);
+$categoryCollection = $categoryFactory->create()->getCollection()->addAttributeToSelect('*');
+
+// Fetching root category ID
+$rootCategoryId = $objectManager->get(\Magento\Catalog\Model\Category::class)->getRootCategoryId();
+$rootCategories = $categoryCollection->addFieldToFilter('parent_id', $rootCategoryId);
+?>
+
+<div class="navbar-box">
+    <div class="category-header">
+        <span class="category-count"><strong><?= count($productIds);?></strong><?= __("items");?></span>
+        <button class="action-default" id="backButton"><?= __("Back"); ?></button>
+        <button class="action-default primary" id="updateCategoryBtn"><?= __("Assign Categories"); ?></button>
+    </div>
+</div>
+
+<div class="loader-overlay2" id="loader-overlay" style="display: none;">
+    <div class="loader2"></div>
+</div>
+<div class="main-container" style="display: flex;">
+    <div class="category-selection" style="width: 19%;">
+        <div id="category-collapse-control">
+        <span class="collapse-control" id="expandAll"><?= __("Expand All"); ?></span>
+        <span class="collapse-control" id="collapseAll"><?= __("Collapse All"); ?></span>
+        </div>
+        <div id="category-selection-form">
+            <ul>
+                <?php foreach ($rootCategories as $category): ?>
+                <?= renderCategoryCheckbox($category, $productIds) ?>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+    </div>
+
+    <div class="custom-product-grid" style="width: 80%;">
+        <table>
+            <thead>
+                <tr>
+                    <th><?= __("Product ID");?></th>
+                    <th><?= __("Product Name");?></th>
+                    <th><?= __("Categories");?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($productsCollection as $product): ?>
+                <tr data-product-id="<?= $product->getId(); ?>">
+                    <td><?= $product->getId(); ?></td>
+                    <td><?= $product->getName(); ?></td>
+                    <td class="category-cell" data-product-id="<?= $product->getId(); ?>">
+                        <?php
+                            $categoryIds = $product->getCategoryIds();
+                            foreach ($categoryIds as $categoryId) {
+                                $category = $categoryFactory->create()->load($categoryId);
+                                echo '<span class="selected-category category-' . $product->getId() . '-' . $categoryId . '" data-id="' . $categoryId . '" data-product-id="' . $product->getId() . '">' . $category->getName() . ' <span class="remove-category" data-id="' . $categoryId . '" data-product-id="' . $product->getId() . '">✖</span></span>';
+                            }
+                        ?>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<?php
+// Function to render category checkboxes in a tree structure
+function renderCategoryCheckbox($category, $productIds) {
+    $isChecked = in_array($category->getId(), $productIds) ? 'checked' : '';
+    $html = '<li>';
+    $html .= '<span class="toggle-children" style="cursor:pointer;">+</span>'; // Toggle button
+    $html .= '<input type="checkbox" name="categories[]" value="' . $category->getId() . '">';
+    $html .= '<label>' . $category->getName() . '</label>'; // Adding label for better accessibility
+    
+    // Render subcategories if any
+    $children = $category->getChildrenCategories();
+    if (count($children) > 0) {
+        $html .= '<ul style="display:none;">'; // Initially hide subcategories
+        foreach ($children as $child) {
+            $html .= renderCategoryCheckbox($child, $productIds);
+        }
+        $html .= '</ul>';
+    }
+
+    $html .= '</li>';
+    return $html;
+}
+?>
+
+<script>
+require(['jquery', 'mage/url'], function($, urlBuilder) {
+    function showLoader() {
+        $('#loader-overlay').show();
+    }
+
+    function hideLoader() {
+        $('#loader-overlay').hide();
+    }
+
+    function appendCategoryToAllRows(category) {
+        $('tbody tr').each(function() {
+            const productId = $(this).data('product-id');
+            let categoryCell = $(this).find('.category-cell');
+
+            // Check if category already exists in the row
+            if (!categoryCell.find(`.category-${productId}-${category.id}`).length) {
+                // Append category if it doesn't exist
+                categoryCell.append(
+                    `<span class="selected-category category-${productId}-${category.id}" data-id="${category.id}" data-product-id="${productId}">${category.name} <span class="remove-category" data-id="${category.id}" data-product-id="${productId}">✖</span></span>`
+                );
+            }
+        });
+    }
+
+    function removeCategoryFromAllRows(categoryId) {
+        // Remove category from all rows
+        $(`.selected-category[data-id="${categoryId}"]`).remove();
+    }
+
+
+    $('#backButton').on('click', function() {
+        window.history.back(); // Navigates back to the previous page
+    });
+    // Update selected categories on checkbox change (add or remove from all rows)
+    $('input[name="categories[]"]').on('change', function() {
+        const category = {
+            id: $(this).val(),
+            name: $(this).next('label').text()
+        };
+
+        if ($(this).is(':checked')) {
+            // If checked, append category to all rows without removing existing categories
+            appendCategoryToAllRows(category);
+        } else {
+            // If unchecked, remove category from all rows
+            removeCategoryFromAllRows(category.id);
+        }
+    });
+
+    // Remove category from the specific row
+    $(document).on('click', '.remove-category', function() {
+        const categoryId = $(this).data('id');
+        const productId = $(this).data('product-id');
+        $(this).closest('.selected-category').remove();
+    });
+
+    // Toggle subcategories
+    $(document).on('click', '.toggle-children', function() {
+        $(this).siblings('ul').toggle(); // Toggle the visibility of subcategories
+        $(this).text($(this).text() === '+' ? '-' : '+'); // Change the toggle button text
+    });
+
+    // Expand all categories
+    $('#expandAll').on('click', function() {
+        $('.toggle-children').each(function() {
+            $(this).text('-'); // Set the text to "-"
+            $(this).siblings('ul').show(); // Show all subcategories
+        });
+    });
+
+    // Collapse all categories
+    $('#collapseAll').on('click', function() {
+        $('.toggle-children').each(function() {
+            $(this).text('+'); // Set the text to "+"
+            $(this).siblings('ul').hide(); // Hide all subcategories
+        });
+    });
+
+    // AJAX call when clicking on "Assign Categories"
+    $('#updateCategoryBtn').on('click', function() {
+        let params = {};
+        $('tbody tr').each(function() {
+            const productId = $(this).data('product-id');
+            let categoryIds = [];
+
+            $(this).find('.selected-category').each(function() {
+                categoryIds.push($(this).data('id'));
+            });
+
+            // if (categoryIds.length > 0) {
+            params[productId] = categoryIds;
+            // }
+        });
+
+        console.log(params);
+        console.log("json converted successfully");
+        console.log(JSON.stringify(params));
+
+
+        let ajaxUrl = '<?php echo $block->getUrl("customizecategory/category/updatecategoryajax"); ?>';
+
+        showLoader();
+        $.ajax({
+            url: ajaxUrl,
+            type: 'POST',
+            data: {
+                products: JSON.stringify(params)
+            },
+            success: function(response) {
+                hideLoader();
+                if (response.success) {
+
+                    // Redirect to catalog/product/index on success
+                    window.location.href =
+                        '<?php echo $block->getUrl("catalog/product/index"); ?>';
+                } else {
+                    location.reload();
+                    console.log("error after run the ajax request");
+                }
+            },
+            error: function() {
+                hideLoader();
+                // location.reload();
+                console.log("error in the ajax request");
+
+                // Reload the current page to render it again on error
+            }
+        });
+    });
+});
+</script>
+
+<style>
+.category-selection ul {
+    list-style-type: none;
+    padding-left: 20px;
+}
+
+.category-selection input {
+    margin-right: 5px;
+}
+
+.selected-categories-list {
+    border: 1px solid #ccc;
+    padding: 5px;
+    border-radius: 3px;
+    min-height: 30px;
+    cursor: text;
+    margin-top: 10px;
+}
+
+.selected-category {
+    display: inline-block;
+    margin: 5px;
+    padding: 3px 5px;
+    background-color: #f0f0f0;
+    border-radius: 3px;
+}
+
+.remove-category {
+    cursor: pointer;
+    color: red;
+    margin-left: 5px;
+}
+
+.toggle-children {
+    margin-right: 5px;
+    font-weight: bold;
+}
+
+.category-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+/* Loader Overlay */
+.loader-overlay2 {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 9999;
+    display: none;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Loader */
+.loader2 {
+    border: 8px solid #f3f3f3;
+    border-top: 8px solid #3498db;
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    animation: spin 1s linear infinite;
+}
+
+/* Spinner Animation */
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Product Grid Styles */
+.custom-product-grid table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.custom-product-grid th,
+.custom-product-grid td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+
+.custom-product-grid th {
+    background-color: #f2f2f2;
+}
+
+.main-container {
+    display: flex;
+    justify-content: space-between;
+}
+
+.navbar-box {
+    display: flex;
+    justify-content: end;
+}
+
+.customizecategory-category-massupdatecategory .loader2 {
+    position: fixed;
+    top: 47% !important;
+    left: 47% !important;
+}
+
+button#backButton {
+    margin-right: 10px;
+}
+
+.category-count {
+    margin-right: 10px;
+}
+
+.collapse-control {
+    cursor: pointer;
+    color: #0000FF;
+}
+
+.collapse-control:hover {
+    text-decoration: underline;
+}
+
+</style>

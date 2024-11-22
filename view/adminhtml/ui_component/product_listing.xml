@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<listing xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Ui:etc/ui_configuration.xsd">
+    <listingToolbar name="listing_top">
+        <massaction name="listing_massaction">
+         <action name="mangoit_customcategory_update">
+                <settings>
+                    <confirm>
+                        <title translate="true">Assign categories to products</title>
+                            <message translate="true">Assign categories to these selected products. Do you want to continue?</message>
+                        </confirm>
+                    <url path="customizecategory/category/massUpdateCategory"/>
+                    <type>update_category</type>
+                    <label translate="true">Update Category</label>
+                </settings>
+            </action>
+        </massaction>
+    </listingToolbar>
+</listing>
